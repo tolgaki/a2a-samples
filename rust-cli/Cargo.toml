@@ -3,6 +3,8 @@ name = "workiq-a2a"
 version = "0.1.0"
 edition = "2021"
 description = "Work IQ A2A CLI — Interactive A2A sessions via WorkIQ"
+license = "MIT"
+readme = "README.md"
 
 [dependencies]
 a2a-rs-core = "1.0.4"
