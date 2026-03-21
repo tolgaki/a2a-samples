@@ -1,0 +1,13 @@
+# Xcode user data
+xcuserdata/
+*.xcuserstate
+
+# Build
+build/
+DerivedData/
+
+# Rust
+rust-cli/target/
+
+# OS
+.DS_Store
