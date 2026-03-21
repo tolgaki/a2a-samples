@@ -1,6 +1,6 @@
 # Work IQ A2A CLI
 
-A Rust command-line tool for interactive [A2A (Agent-to-Agent)](https://google.github.io/A2A/) sessions with [Microsoft Work IQ](https://learn.microsoft.com/microsoft-365-copilot/extensibility/work-iq-overview) via the Microsoft Graph API.
+A Rust command-line tool for interactive [A2A (Agent-to-Agent)](https://google.github.io/A2A/) sessions with [Microsoft Work IQ](https://aka.ms/workiq) via the Microsoft Graph API.
 
 ## Features
 

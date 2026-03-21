@@ -1,6 +1,6 @@
 # Work IQ Samples
 
-Sample applications demonstrating how to integrate with [Microsoft Work IQ](https://learn.microsoft.com/microsoft-365-copilot/extensibility/work-iq-overview) using the [A2A (Agent-to-Agent) protocol](https://google.github.io/A2A/).
+Sample applications demonstrating how to integrate with [Microsoft Work IQ](https://aka.ms/workiq) using the [A2A (Agent-to-Agent) protocol](https://google.github.io/A2A/).
 
 ## Samples
 
