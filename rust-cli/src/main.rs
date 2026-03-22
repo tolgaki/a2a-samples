@@ -148,7 +148,7 @@ async fn main() -> anyhow::Result<()> {
             if let Ok(fresh_token) = mgr.ensure_fresh(verbosity).await {
                 if fresh_token != token {
                     token = fresh_token;
-                    client.update_token(&token, WORKIQ_EXTRA_HEADERS)?;
+                    client.update_token(&token);
                 }
             }
         }

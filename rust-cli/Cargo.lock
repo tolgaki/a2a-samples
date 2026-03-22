@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "a2a-rs-client"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "758c72696b751b5ad1224509b8d5867e06aa95587f70b3ab467c775448f29b73"
+checksum = "d6e3057b303c84ff54d0b1ba0732823f38c5476cacbd405fd203d5ac9d8a58db"
 dependencies = [
  "a2a-rs-core",
  "anyhow",
@@ -27,9 +27,9 @@ dependencies = [
 
 [[package]]
 name = "a2a-rs-core"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "485edc7b9899f885affc9b5e0245ab3864298e663c1b83ddb22da072b258cc1e"
+checksum = "2b065af3b8b7f548029d16928436994e1f74f9b8583d660500cf502caddc2aca"
 dependencies = [
  "chrono",
  "serde",
@@ -258,7 +258,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -2426,7 +2426,6 @@ dependencies = [
  "a2a-rs-client",
  "a2a-rs-core",
  "anyhow",
- "async-stream",
  "base64",
  "chrono",
  "clap",
@@ -2437,8 +2436,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "tokio-stream",
- "uuid",
 ]
 
 [[package]]

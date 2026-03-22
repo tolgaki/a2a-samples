@@ -5,11 +5,7 @@ pub static WORKIQ_ENDPOINT: &str = "https://graph.microsoft.com/rp/workiq";
 pub static WORKIQ_SCOPES: &[&str] = &["https://graph.microsoft.com/.default"];
 pub static WORKIQ_AUTHORITY: &str = "https://login.microsoftonline.com/ca24a1b0-4df5-4b45-8126-22d617eb8f90";
 pub static WORKIQ_EXTRA_HEADERS: &[(&str, &str)] = &[
-    ("Prefer", "A2AVersion=2025-Draft"),
-    (
-        "x-ms-copilot-plugin-ids",
-        "ChatControllerEndpoint,feature.MSGraph3PCopilotToHelix,feature.EnableA2AServer",
-    ),
+    ("X-variants", "feature.EnableCopilotChatControllerEndpoint,feature.MSGraph3PCopilotToHelix,feature.EnableA2AServer"),
 ];
 
 /// Work IQ A2A CLI — Interactive A2A session via WorkIQ

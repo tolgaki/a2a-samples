@@ -19,6 +19,8 @@ private let log = Logger(subsystem: "app.blueglass.A2A-Chat", category: "A2A")
 class A2AService {
     private let authService: AuthService
     private var contextId: String?
+    private var cachedClient: A2AClient?
+    private var cachedToken: String?
 
     private static let endpoint = URL(string: "https://graph.microsoft.com/rp/workiq/")!
     private static let extraHeaders: [String: String] = [
@@ -32,7 +34,7 @@ class A2AService {
     // MARK: - Public interface
 
     /// Send a message via streaming. Calls `onText` with accumulated text as chunks arrive.
-    func sendStreaming(_ text: String, onText: @escaping (String) -> Void) async throws {
+    @MainActor func sendStreaming(_ text: String, onText: @escaping (String) -> Void) async throws {
         guard let token = await authService.refreshToken() else {
             throw URLError(.userAuthenticationRequired)
         }
@@ -122,11 +124,16 @@ class A2AService {
     /// Clear conversation context.
     func reset() {
         contextId = nil
+        cachedClient = nil
+        cachedToken = nil
     }
 
     // MARK: - Private
 
     private func makeClient(token: String) -> A2AClient {
+        if let cachedClient, cachedToken == token {
+            return cachedClient
+        }
         let sessionConfig = URLSessionConfiguration.default
         sessionConfig.httpAdditionalHeaders = Self.extraHeaders
         sessionConfig.timeoutIntervalForRequest = 300
@@ -137,6 +144,9 @@ class A2AService {
             sessionConfiguration: sessionConfig
         ).withBearerToken(token)
 
-        return A2AClient(configuration: config)
+        let client = A2AClient(configuration: config)
+        cachedClient = client
+        cachedToken = token
+        return client
     }
 }

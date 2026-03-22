@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use base64::engine::general_purpose::STANDARD_NO_PAD;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
@@ -117,27 +117,25 @@ impl AuthManager {
         }
 
         // 2. Try silent refresh
-        if let Some(ref cache) = self.cache.clone() {
-            if let Some(ref rt) = cache.refresh_token {
-                if verbosity >= 1 {
-                    eprintln!("  {}", "Refreshing token...".dimmed());
+        if let Some(rt) = self.cache.as_ref().and_then(|c| c.refresh_token.clone()) {
+            if verbosity >= 1 {
+                eprintln!("  {}", "Refreshing token...".dimmed());
+            }
+            match self.refresh_token(&rt).await {
+                Ok(new_cache) => {
+                    let token = new_cache.access_token.clone();
+                    self.cache = Some(new_cache);
+                    return Ok(token);
                 }
-                match self.refresh_token(rt).await {
-                    Ok(new_cache) => {
-                        let token = new_cache.access_token.clone();
-                        self.cache = Some(new_cache);
-                        return Ok(token);
+                Err(e) => {
+                    if verbosity >= 1 {
+                        eprintln!(
+                            "  {} {}",
+                            "Refresh failed:".yellow(),
+                            e
+                        );
                     }
-                    Err(e) => {
-                        if verbosity >= 1 {
-                            eprintln!(
-                                "  {} {}",
-                                "Refresh failed:".yellow(),
-                                e
-                            );
-                        }
-                        // Fall through to device code
-                    }
+                    // Fall through to device code
                 }
             }
         }
@@ -162,21 +160,19 @@ impl AuthManager {
             }
         }
         // Token is stale or near expiry — try silent refresh
-        if let Some(ref cache) = self.cache.clone() {
-            if let Some(ref rt) = cache.refresh_token {
-                if verbosity >= 2 {
-                    eprintln!("  {}", "Silently refreshing token...".dimmed());
+        if let Some(rt) = self.cache.as_ref().and_then(|c| c.refresh_token.clone()) {
+            if verbosity >= 2 {
+                eprintln!("  {}", "Silently refreshing token...".dimmed());
+            }
+            match self.refresh_token(&rt).await {
+                Ok(new_cache) => {
+                    let token = new_cache.access_token.clone();
+                    self.cache = Some(new_cache);
+                    return Ok(token);
                 }
-                match self.refresh_token(rt).await {
-                    Ok(new_cache) => {
-                        let token = new_cache.access_token.clone();
-                        self.cache = Some(new_cache);
-                        return Ok(token);
-                    }
-                    Err(e) => {
-                        if verbosity >= 1 {
-                            eprintln!("  {} {}", "Silent refresh failed:".yellow(), e);
-                        }
+                Err(e) => {
+                    if verbosity >= 1 {
+                        eprintln!("  {} {}", "Silent refresh failed:".yellow(), e);
                     }
                 }
             }
@@ -412,13 +408,8 @@ fn extract_account(token: &str) -> Option<String> {
 }
 
 fn decode_jwt_part(part: &str) -> Result<serde_json::Value> {
-    let padded = match part.len() % 4 {
-        2 => format!("{}==", part),
-        3 => format!("{}=", part),
-        _ => part.to_string(),
-    };
-    let decoded = STANDARD_NO_PAD
-        .decode(padded.replace('-', "+").replace('_', "/"))
+    let decoded = URL_SAFE_NO_PAD
+        .decode(part.trim_end_matches('='))
         .context("base64 decode")?;
     serde_json::from_slice(&decoded).context("JSON parse")
 }

@@ -45,6 +45,9 @@ struct ChatView: View {
                     .onChange(of: isWaiting) {
                         scrollToBottom(proxy: proxy)
                     }
+                    .onChange(of: messages.last?.text) {
+                        scrollToBottom(proxy: proxy)
+                    }
                 }
 
                 Divider()

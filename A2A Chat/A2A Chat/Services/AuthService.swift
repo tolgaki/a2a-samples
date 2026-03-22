@@ -108,6 +108,9 @@ class AuthService {
 
     func signOut() {
         log.info("signOut")
+        if let application, let account {
+            try? application.remove(account)
+        }
         accessToken = nil
         account = nil
         userName = nil
