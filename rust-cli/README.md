@@ -13,7 +13,7 @@ A Rust command-line tool for interactive [A2A (Agent-to-Agent)](https://google.g
 
 - [Rust](https://www.rust-lang.org/tools/install) (1.70+)
 - A Microsoft 365 account with access to Work IQ
-- An Azure AD app registration with the `https://graph.microsoft.com/.default` scope and device code flow enabled. A default app ID is provided for convenience.
+- An Azure AD app registration with the `https://graph.microsoft.com/.default` scope and device code flow enabled. A default app ID is provided for convenience, or you can register your own (see [Setup](#azure-ad-app-registration) below).
 
 ## Quick Start
 
@@ -86,6 +86,30 @@ Once in the interactive session, type your message and press Enter. Special inpu
 - `quit` or `exit` — end the session
 - `Ctrl+C` — interrupt
 
+## Azure AD App Registration
+
+A default app ID is included for convenience. To register your own:
+
+### macOS / Linux
+
+```bash
+# Requires Azure CLI — install via: brew install azure-cli
+az login
+./setup-app-registration.sh
+```
+
+### Windows
+
+```powershell
+# Requires Azure CLI
+az login
+.\setup-app-registration.ps1
+```
+
+Both scripts will create a public client app registration with device code flow enabled, add the required `User.Read` permission, grant admin consent, and print the app ID.
+
+Use the printed app ID with `--appid` or set the `WORKIQ_APP_ID` environment variable.
+
 ## Architecture
 
 ```
@@ -93,7 +117,7 @@ src/
 ├── main.rs      # CLI entry point, REPL loop, output formatting
 ├── config.rs    # Argument parsing (clap) and WorkIQ endpoint constants
 ├── auth.rs      # OAuth 2.0 device code flow, token caching, silent refresh
-└── a2a.rs       # A2A HTTP client (sync and streaming via JSON-RPC 2.0)
+└── a2a.rs       # A2A client wrapper (sync and streaming via a2a-rs-client)
 ```
 
 ### Authentication Flow

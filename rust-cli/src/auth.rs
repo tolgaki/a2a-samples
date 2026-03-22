@@ -181,7 +181,7 @@ impl AuthManager {
         if let Some(ref cache) = self.cache {
             Ok(cache.access_token.clone())
         } else {
-            anyhow::bail!("No token available. Run with --token device to log in.");
+            anyhow::bail!("No token available. Run `login` to authenticate.");
         }
     }
 
@@ -245,7 +245,7 @@ impl AuthManager {
         let scope_with_offline = if scope.contains("offline_access") {
             scope.clone()
         } else {
-            format!("{} offline_access", scope)
+            format!("{scope} offline_access")
         };
 
         let dc_url = format!("{}/oauth2/v2.0/devicecode", self.authority);
@@ -420,7 +420,8 @@ fn print_json_pretty(val: &serde_json::Value, indent: &str) {
             let v_str = match v {
                 serde_json::Value::String(s) => {
                     if s.len() > 80 {
-                        format!("{}...", &s[..80])
+                        let truncated: String = s.chars().take(80).collect();
+                        format!("{truncated}...")
                     } else {
                         s.clone()
                     }

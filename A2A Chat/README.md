@@ -12,8 +12,8 @@ A SwiftUI iOS/iPadOS app for chatting with [Microsoft Work IQ](https://aka.ms/wo
 
 ## Prerequisites
 
-- **Xcode 26.2+** (Swift 5.0)
-- iOS/iPadOS 26.2+ device or simulator
+- **Xcode 26+** (Swift 6.0)
+- iOS/iPadOS 26+ device or simulator
 - A Microsoft 365 account with access to Work IQ
 - An Azure AD app registration (see [Setup](#azure-ad-app-registration) below)
 

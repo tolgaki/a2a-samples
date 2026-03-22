@@ -108,7 +108,7 @@ async fn main() -> anyhow::Result<()> {
         log_header("TOKEN");
         decode_token(&token);
         if cli.show_token {
-            println!("\n  {}\n", token);
+            println!("\n  {token}\n");
         }
     }
 
@@ -118,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
 
     if verbosity >= 1 {
         let mode = if cli.stream { "Streaming" } else { "Sync" };
-        log_header(&format!("READY — WorkIQ — {} — {}", mode, WORKIQ_ENDPOINT));
+        log_header(&format!("READY — WorkIQ — {mode} — {WORKIQ_ENDPOINT}"));
         if let Some(ref mgr) = auth_mgr {
             if let Some(acct) = mgr.cached_account() {
                 println!("  Signed in as {}", acct.cyan());
@@ -139,7 +139,10 @@ async fn main() -> anyhow::Result<()> {
             break;
         }
         let input = input.trim();
-        if input.is_empty() || input.eq_ignore_ascii_case("quit") {
+        if input.is_empty() {
+            continue;
+        }
+        if input.eq_ignore_ascii_case("quit") || input.eq_ignore_ascii_case("exit") {
             break;
         }
 
@@ -299,7 +302,7 @@ fn display_result(
 fn print_parts(parts: &[Part]) {
     for part in parts {
         match part {
-            Part::Text { text, .. } => println!("{}", text),
+            Part::Text { text, .. } => println!("{text}"),
             Part::Data { data, .. } => {
                 println!("{}", serde_json::to_string_pretty(data).unwrap_or_default())
             }
@@ -311,7 +314,7 @@ fn print_parts(parts: &[Part]) {
 fn print_parts_inline(parts: &[Part]) {
     for part in parts {
         match part {
-            Part::Text { text, .. } => print!("{}", text),
+            Part::Text { text, .. } => print!("{text}"),
             Part::Data { data, .. } => {
                 print!("{}", serde_json::to_string_pretty(data).unwrap_or_default())
             }
