@@ -52,7 +52,8 @@ class A2AService {
                 if let ctxId = update.contextId as String?, !ctxId.isEmpty {
                     contextId = ctxId
                 }
-                if let message = update.status.message {
+                // Only use status message if we have no artifact text
+                if accumulated.isEmpty, let message = update.status.message {
                     let newText = message.textContent
                     if !newText.isEmpty {
                         accumulated = newText

@@ -70,6 +70,9 @@ struct ChatView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 8)
             }
+            .onTapGesture {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
             .navigationTitle("Work IQ")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
