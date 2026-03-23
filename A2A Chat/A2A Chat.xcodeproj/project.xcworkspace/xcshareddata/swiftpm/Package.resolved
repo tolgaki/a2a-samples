@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tolgaki/a2a-client-swift",
       "state" : {
-        "revision" : "ae8ead7b9d12ddbdedda8ed47320a951eeb95bd1",
-        "version" : "1.0.5"
+        "revision" : "375eda5c7d371252077804ce38a8893647157c24",
+        "version" : "1.0.6"
       }
     },
     {
