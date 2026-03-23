@@ -163,6 +163,7 @@ async fn main() -> anyhow::Result<()> {
             blocking: Some(!cli.stream),
             history_length: None,
             push_notification_config: None,
+            return_immediately: None,
         });
 
         if cli.stream {
