@@ -1,4 +1,4 @@
-use a2a_rs_client::{A2aClient, ClientConfig};
+use a2a_rs_client::{A2aClient, ClientConfig, ProtocolVersion};
 use a2a_rs_core::{Message, SendMessageConfiguration, SendMessageResult, StreamingMessageResult};
 use anyhow::Result;
 use futures_util::Stream;
@@ -6,7 +6,7 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::pin::Pin;
 use std::time::Duration;
 
-/// Thin wrapper around `A2aClient` configured for WorkIQ.
+/// Thin wrapper around `A2aClient` configured for WorkIQ (A2A v0.3).
 ///
 /// Uses `endpoint_url` to bypass agent card discovery and a custom
 /// `reqwest::Client` for extra headers. Auth token is passed per-request.
@@ -22,6 +22,7 @@ impl WorkIQClient {
             server_url: endpoint.to_string(),
             endpoint_url: Some(endpoint.to_string()),
             http_client: Some(http_client),
+            protocol_version: ProtocolVersion::V0_3,
             ..Default::default()
         })?;
         Ok(Self {

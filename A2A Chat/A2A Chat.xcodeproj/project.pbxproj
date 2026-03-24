@@ -604,7 +604,7 @@
 			repositoryURL = "https://github.com/tolgaki/a2a-client-swift";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.7;
+				minimumVersion = 1.0.12;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

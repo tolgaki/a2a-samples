@@ -19,8 +19,6 @@ private let log = Logger(subsystem: "app.blueglass.A2A-Chat", category: "A2A")
 class A2AService {
     private let authService: AuthService
     private var contextId: String?
-    private var cachedClient: A2AClient?
-    private var cachedToken: String?
 
     private static let endpoint = URL(string: "https://graph.microsoft.com/rp/workiq/")!
     private static let extraHeaders: [String: String] = [
@@ -34,7 +32,7 @@ class A2AService {
     // MARK: - Public interface
 
     /// Send a message via streaming. Calls `onText` with accumulated text as chunks arrive.
-    @MainActor func sendStreaming(_ text: String, onText: @escaping (String) -> Void) async throws {
+    func sendStreaming(_ text: String, onText: @escaping (String) -> Void) async throws {
         guard let token = await authService.refreshToken() else {
             throw URLError(.userAuthenticationRequired)
         }
@@ -52,7 +50,6 @@ class A2AService {
                 if let ctxId = update.contextId as String?, !ctxId.isEmpty {
                     contextId = ctxId
                 }
-                // Only use status message if we have no artifact text
                 if accumulated.isEmpty, let message = update.status.message {
                     let newText = message.textContent
                     if !newText.isEmpty {
@@ -103,7 +100,7 @@ class A2AService {
         }
     }
 
-    /// Non-streaming fallback.
+    /// Non-streaming send via library.
     func send(_ text: String) async throws -> String {
         guard let token = await authService.refreshToken() else {
             throw URLError(.userAuthenticationRequired)
@@ -125,29 +122,36 @@ class A2AService {
     /// Clear conversation context.
     func reset() {
         contextId = nil
-        cachedClient = nil
-        cachedToken = nil
     }
 
     // MARK: - Private
 
     private func makeClient(token: String) -> A2AClient {
-        if let cachedClient, cachedToken == token {
-            return cachedClient
-        }
-        let sessionConfig = URLSessionConfiguration.default
-        sessionConfig.httpAdditionalHeaders = Self.extraHeaders
-        sessionConfig.timeoutIntervalForRequest = 300
+        let auth = WorkIQAuth(token: token, extraHeaders: Self.extraHeaders)
 
         let config = A2AClientConfiguration(
             baseURL: Self.endpoint,
             transportBinding: .jsonRPC,
-            sessionConfiguration: sessionConfig
-        ).withBearerToken(token)
+            protocolVersion: "0.3",
+            timeoutInterval: 300,
+            authenticationProvider: auth
+        )
 
-        let client = A2AClient(configuration: config)
-        cachedClient = client
-        cachedToken = token
-        return client
+        return A2AClient(configuration: config)
+    }
+}
+
+/// Auth provider that adds bearer token + custom headers to every request.
+private struct WorkIQAuth: AuthenticationProvider, Sendable {
+    let token: String
+    let extraHeaders: [String: String]
+
+    func authenticate(request: URLRequest) async throws -> URLRequest {
+        var request = request
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        for (key, value) in extraHeaders {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        return request
     }
 }

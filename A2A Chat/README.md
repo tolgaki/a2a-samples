@@ -1,11 +1,12 @@
 # A2A Chat
 
-A SwiftUI iOS/iPadOS app for chatting with [Microsoft Work IQ](https://aka.ms/workiq) using the [A2A (Agent-to-Agent) protocol](https://google.github.io/A2A/). The AI assistant can access and reason about your Microsoft 365 data — emails, Teams chats, OneDrive documents, and more.
+A SwiftUI iOS/iPadOS app for chatting with [Microsoft Work IQ](https://aka.ms/workiq) using the [A2A (Agent-to-Agent) protocol v0.3](https://a2a-protocol.org). The AI assistant can access and reason about your Microsoft 365 data — emails, Teams chats, OneDrive documents, and more.
 
 ## Features
 
 - **Microsoft 365 sign-in** via MSAL (device code / interactive)
-- **Streaming responses** with real-time text display
+- **A2A v0.3 protocol** over JSON-RPC transport
+- **Streaming responses** via SSE with real-time token-by-token display
 - **Multi-turn conversations** with persistent context
 - **Markdown rendering** in agent responses
 - **Automatic token refresh** for long sessions
@@ -77,7 +78,7 @@ A2A Chat/
 | Package | Source | Purpose |
 |---------|--------|---------|
 | [MSAL](https://github.com/AzureAD/microsoft-authentication-library-for-objc) | AzureAD | Microsoft 365 authentication |
-| [A2AClient](https://github.com/tolgaki/a2a-client-swift) | tolgaki | A2A protocol client for Work IQ |
+| [A2AClient](https://github.com/tolgaki/a2a-client-swift) (1.0.12+) | tolgaki | A2A v0.3 protocol client for Work IQ |
 
 ## License
 
