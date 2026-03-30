@@ -84,7 +84,7 @@ A2A Chat/
 | Package | Source | Purpose |
 |---------|--------|---------|
 | [MSAL](https://github.com/AzureAD/microsoft-authentication-library-for-objc) | AzureAD | Microsoft 365 authentication |
-| [A2AClient](https://github.com/tolgaki/a2a-client-swift) (1.0.12+) | tolgaki | A2A v0.3 protocol client |
+| [A2AClient](https://github.com/tolgaki/a2a-client-swift) (1.0.13+) | tolgaki | A2A v0.3 protocol client |
 
 ## License
 
