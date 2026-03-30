@@ -20,7 +20,7 @@ pub struct TokenCache {
 fn cache_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".workiq")
+        .join(".a2a-cli")
 }
 
 fn cache_path() -> PathBuf {

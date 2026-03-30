@@ -2,7 +2,7 @@ mod a2a;
 mod auth;
 mod config;
 
-use a2a::WorkIQClient;
+use a2a::A2ASessionClient;
 use a2a_rs_core::{
     new_message, Part, Role, SendMessageConfiguration, SendMessageResult,
     StreamingMessageResult,
@@ -10,7 +10,7 @@ use a2a_rs_core::{
 use auth::{decode_token, AuthManager, TokenCache};
 use clap::Parser;
 use colored::Colorize;
-use config::{Cli, Command, WORKIQ_AUTHORITY, WORKIQ_ENDPOINT, WORKIQ_EXTRA_HEADERS, WORKIQ_SCOPES};
+use config::{Cli, Command, A2A_AUTHORITY, A2A_ENDPOINT, A2A_SCOPES};
 use futures_util::StreamExt;
 
 use std::io::{self, Write};
@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
 
     fn require_app_id(app_id: &str) -> anyhow::Result<()> {
         if app_id.is_empty() {
-            anyhow::bail!("--appid is required (or set WORKIQ_APP_ID)");
+            anyhow::bail!("--appid is required (or set A2A_APP_ID)");
         }
         Ok(())
     }
@@ -34,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Login) => {
             require_app_id(&app_id)?;
             let mut mgr =
-                AuthManager::new(&app_id, WORKIQ_SCOPES, WORKIQ_AUTHORITY, cli.account.as_deref());
+                AuthManager::new(&app_id, A2A_SCOPES, A2A_AUTHORITY, cli.account.as_deref());
             let token = mgr.get_token(verbosity).await?;
             println!("\n{}", "Logged in successfully.".green().bold());
             if let Some(acct) = mgr.cached_account() {
@@ -83,7 +83,7 @@ async fn main() -> anyhow::Result<()> {
                 None => {
                     println!(
                         "{}",
-                        "No cached session. Run `workiq-a2a login` to authenticate.".yellow()
+                        "No cached session. Run `a2a-cli login` to authenticate.".yellow()
                     );
                 }
             }
@@ -98,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         require_app_id(&app_id)?;
         let mut mgr =
-            AuthManager::new(&app_id, WORKIQ_SCOPES, WORKIQ_AUTHORITY, cli.account.as_deref());
+            AuthManager::new(&app_id, A2A_SCOPES, A2A_AUTHORITY, cli.account.as_deref());
         let token = mgr.get_token(verbosity).await?;
         (token, Some(mgr))
     };
@@ -113,12 +113,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // ── Set up A2A client ────────────────────────────────────────────
-    let mut client = WorkIQClient::new(WORKIQ_ENDPOINT, &token, WORKIQ_EXTRA_HEADERS)?;
+    let mut client = A2ASessionClient::new(A2A_ENDPOINT, &token)?;
     let mut context_id: Option<String> = None;
 
     if verbosity >= 1 {
         let mode = if cli.stream { "Streaming" } else { "Sync" };
-        log_header(&format!("READY — WorkIQ — {mode} — {WORKIQ_ENDPOINT}"));
+        log_header(&format!("READY — {mode} — {A2A_ENDPOINT}"));
         if let Some(ref mgr) = auth_mgr {
             if let Some(acct) = mgr.cached_account() {
                 println!("  Signed in as {}", acct.cyan());
@@ -177,7 +177,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn handle_sync(
-    client: &WorkIQClient,
+    client: &A2ASessionClient,
     message: a2a_rs_core::Message,
     config: Option<SendMessageConfiguration>,
     context_id: &mut Option<String>,
@@ -191,7 +191,7 @@ async fn handle_sync(
 }
 
 async fn handle_streaming(
-    client: &WorkIQClient,
+    client: &A2ASessionClient,
     message: a2a_rs_core::Message,
     config: Option<SendMessageConfiguration>,
     context_id: &mut Option<String>,

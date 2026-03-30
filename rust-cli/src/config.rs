@@ -1,15 +1,11 @@
 use clap::{Parser, Subcommand};
 
-/// WorkIQ endpoint configuration.
-pub static WORKIQ_ENDPOINT: &str = "https://graph.microsoft.com/rp/workiq";
-pub static WORKIQ_SCOPES: &[&str] = &["https://graph.microsoft.com/.default"];
-pub static WORKIQ_AUTHORITY: &str = "https://login.microsoftonline.com/ca24a1b0-4df5-4b45-8126-22d617eb8f90";
-pub static WORKIQ_EXTRA_HEADERS: &[(&str, &str)] = &[
-    ("X-variants", "feature.EnableCopilotChatControllerEndpoint,feature.MSGraph3PCopilotToHelix,feature.EnableA2AServer"),
-];
+/// A2A endpoint configuration.
+pub static A2A_ENDPOINT: &str = "https://insert-your-endpoint-url";
+pub static A2A_SCOPES: &[&str] = &["https://graph.microsoft.com/.default"];
+pub static A2A_AUTHORITY: &str = "https://login.microsoftonline.com/ca24a1b0-4df5-4b45-8126-22d617eb8f90";
 
-/// Work IQ A2A CLI — Interactive A2A session via WorkIQ
-#[allow(clippy::doc_markdown)]
+/// A2A CLI — Interactive A2A session
 #[derive(Parser, Debug)]
 #[command(version, about)]
 pub struct Cli {
@@ -21,7 +17,7 @@ pub struct Cli {
     pub token: Option<String>,
 
     /// Azure AD application (client) ID
-    #[arg(long, global = true, env = "WORKIQ_APP_ID", default_value = "a668445b-6bb2-40f7-9aa6-87331e80db51")]
+    #[arg(long, global = true, env = "A2A_APP_ID", default_value = "a668445b-6bb2-40f7-9aa6-87331e80db51")]
     pub appid: Option<String>,
 
     /// M365 account hint (e.g. user@contoso.com)

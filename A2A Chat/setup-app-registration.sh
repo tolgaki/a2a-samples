@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ── A2A Chat — Azure AD App Registration Setup ──────────────────────────
 # Creates a single-tenant app registration with the required Graph API
-# delegated permissions for the Work IQ A2A Chat sample app.
+# delegated permissions for the A2A Chat sample app.
 #
 # Prerequisites: az CLI, logged in (az login)
 # Usage: ./setup-app-registration.sh
@@ -75,8 +75,25 @@ az rest --method POST \
     }" -o none
 
 echo ""
+echo "── Generating Configuration.plist ──"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cat > "$SCRIPT_DIR/A2A Chat/Configuration.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>ClientId</key>
+    <string>$APP_ID</string>
+</dict>
+</plist>
+PLIST
+
+echo "   Created: A2A Chat/Configuration.plist"
+
+echo ""
 echo "── Done ──"
 echo "App ID: $APP_ID"
 echo "Redirect URI: $REDIRECT_URI"
 echo ""
-echo "Update AuthService.swift with this App ID."
+echo "Configuration.plist created. Build and run in Xcode."

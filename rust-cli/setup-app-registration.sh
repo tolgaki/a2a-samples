@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── Work IQ A2A CLI — Azure AD App Registration Setup ────────────────────
+# ── A2A CLI — Azure AD App Registration Setup ────────────────────────────
 # Creates a single-tenant public client app registration for device code
-# flow authentication against Microsoft Graph / Work IQ.
+# flow authentication against Microsoft Graph.
 #
 # Prerequisites: az CLI, logged in (az login)
 # Usage: ./setup-app-registration.sh
 
-DISPLAY_NAME="Work IQ A2A CLI"
+DISPLAY_NAME="A2A CLI"
 SIGN_IN_AUDIENCE="AzureADMyOrg"
 GRAPH_API="00000003-0000-0000-c000-000000000000"
 
@@ -57,4 +57,4 @@ echo "── Done ──"
 echo "App ID: $APP_ID"
 echo ""
 echo "Use with:  cargo run -- --appid $APP_ID"
-echo "Or set:    export WORKIQ_APP_ID=$APP_ID"
+echo "Or set:    export A2A_APP_ID=$APP_ID"

@@ -2,22 +2,20 @@ use a2a_rs_client::{A2aClient, ClientConfig, ProtocolVersion};
 use a2a_rs_core::{Message, SendMessageConfiguration, SendMessageResult, StreamingMessageResult};
 use anyhow::Result;
 use futures_util::Stream;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::pin::Pin;
 use std::time::Duration;
 
-/// Thin wrapper around `A2aClient` configured for WorkIQ (A2A v0.3).
+/// Thin wrapper around `A2aClient` configured for A2A v0.3.
 ///
-/// Uses `endpoint_url` to bypass agent card discovery and a custom
-/// `reqwest::Client` for extra headers. Auth token is passed per-request.
-pub struct WorkIQClient {
+/// Uses `endpoint_url` to bypass agent card discovery. Auth token is passed per-request.
+pub struct A2ASessionClient {
     client: A2aClient,
     token: String,
 }
 
-impl WorkIQClient {
-    pub fn new(endpoint: &str, token: &str, extra_headers: &[(&str, &str)]) -> Result<Self> {
-        let http_client = build_http_client(extra_headers)?;
+impl A2ASessionClient {
+    pub fn new(endpoint: &str, token: &str) -> Result<Self> {
+        let http_client = build_http_client()?;
         let client = A2aClient::new(ClientConfig {
             server_url: endpoint.to_string(),
             endpoint_url: Some(endpoint.to_string()),
@@ -60,15 +58,8 @@ impl WorkIQClient {
     }
 }
 
-fn build_http_client(extra_headers: &[(&str, &str)]) -> Result<reqwest::Client> {
-    let mut headers = HeaderMap::new();
-    for (k, v) in extra_headers {
-        let name: HeaderName = k.parse()?;
-        let val = HeaderValue::from_str(v)?;
-        headers.insert(name, val);
-    }
+fn build_http_client() -> Result<reqwest::Client> {
     Ok(reqwest::Client::builder()
-        .default_headers(headers)
         .timeout(Duration::from_secs(300))
         .build()?)
 }

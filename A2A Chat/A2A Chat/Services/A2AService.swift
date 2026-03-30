@@ -20,10 +20,7 @@ class A2AService {
     private let authService: AuthService
     private var contextId: String?
 
-    private static let endpoint = URL(string: "https://graph.microsoft.com/rp/workiq/")!
-    private static let extraHeaders: [String: String] = [
-        "X-variants": "feature.EnableCopilotChatControllerEndpoint,feature.MSGraph3PCopilotToHelix,feature.EnableA2AServer"
-    ]
+    private static let endpoint = URL(string: "https://insert-your-endpoint-url/")!
 
     init(authService: AuthService) {
         self.authService = authService
@@ -127,7 +124,7 @@ class A2AService {
     // MARK: - Private
 
     private func makeClient(token: String) -> A2AClient {
-        let auth = WorkIQAuth(token: token, extraHeaders: Self.extraHeaders)
+        let auth = BearerTokenAuth(token: token)
 
         let config = A2AClientConfiguration(
             baseURL: Self.endpoint,
@@ -141,17 +138,13 @@ class A2AService {
     }
 }
 
-/// Auth provider that adds bearer token + custom headers to every request.
-private struct WorkIQAuth: AuthenticationProvider, Sendable {
+/// Auth provider that adds a bearer token to every request.
+private struct BearerTokenAuth: AuthenticationProvider, Sendable {
     let token: String
-    let extraHeaders: [String: String]
 
     func authenticate(request: URLRequest) async throws -> URLRequest {
         var request = request
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        for (key, value) in extraHeaders {
-            request.setValue(value, forHTTPHeaderField: key)
-        }
         return request
     }
 }

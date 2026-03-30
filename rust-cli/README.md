@@ -1,6 +1,6 @@
-# Work IQ A2A CLI
+# A2A CLI
 
-A Rust command-line tool for interactive [A2A v0.3 (Agent-to-Agent)](https://a2a-protocol.org/latest/specification/) sessions with [Microsoft Work IQ](https://aka.ms/workiq) via the Microsoft Graph API.
+A Rust command-line tool for interactive [A2A v0.3 (Agent-to-Agent)](https://a2a-protocol.org/latest/specification/) sessions.
 
 ## Features
 
@@ -12,7 +12,7 @@ A Rust command-line tool for interactive [A2A v0.3 (Agent-to-Agent)](https://a2a
 ## Prerequisites
 
 - [Rust](https://www.rust-lang.org/tools/install) (1.70+)
-- A Microsoft 365 account with access to Work IQ
+- A Microsoft 365 account
 - An Azure AD app registration with the `https://graph.microsoft.com/.default` scope and device code flow enabled. A default app ID is provided for convenience, or you can register your own (see [Setup](#azure-ad-app-registration) below).
 
 ## Quick Start
@@ -29,12 +29,12 @@ cargo run
 #   and enter the code XXXXXXXXX to authenticate.
 ```
 
-After authentication, your token is cached at `~/.workiq/token_cache.json` and refreshed automatically.
+After authentication, your token is cached at `~/.a2a-cli/token_cache.json` and refreshed automatically.
 
 ## Usage
 
 ```
-workiq-a2a [OPTIONS] [COMMAND]
+a2a-cli [OPTIONS] [COMMAND]
 ```
 
 ### Commands
@@ -58,7 +58,7 @@ If no command is given, the CLI enters the interactive REPL.
 | `-v, --verbosity <N>` | Output detail: 0=quiet, 1=normal, 2=wire | `1` |
 | `--show-token` | Include raw token in output | `false` |
 
-The `--appid` flag can also be set via the `WORKIQ_APP_ID` environment variable.
+The `--appid` flag can also be set via the `A2A_APP_ID` environment variable.
 
 ### Examples
 
@@ -108,14 +108,14 @@ az login
 
 Both scripts will create a public client app registration with device code flow enabled, add the required `User.Read` permission, grant admin consent, and print the app ID.
 
-Use the printed app ID with `--appid` or set the `WORKIQ_APP_ID` environment variable.
+Use the printed app ID with `--appid` or set the `A2A_APP_ID` environment variable.
 
 ## Architecture
 
 ```
 src/
 ├── main.rs      # CLI entry point, REPL loop, output formatting
-├── config.rs    # Argument parsing (clap) and WorkIQ endpoint constants
+├── config.rs    # Argument parsing (clap) and endpoint constants
 ├── auth.rs      # OAuth 2.0 device code flow, token caching, silent refresh
 └── a2a.rs       # A2A client wrapper (sync and streaming via a2a-rs-client)
 ```
@@ -126,7 +126,7 @@ src/
 2. **Silent refresh** — exchange refresh token for a new access token
 3. **Device code flow** — interactive login as a fallback
 
-Tokens are cached at `~/.workiq/token_cache.json` with `0600` permissions.
+Tokens are cached at `~/.a2a-cli/token_cache.json` with `0600` permissions.
 
 ## License
 

@@ -1,13 +1,13 @@
-# ── Work IQ A2A CLI — Azure AD App Registration Setup ────────────────────
+# ── A2A CLI — Azure AD App Registration Setup ────────────────────────────
 # Creates a single-tenant public client app registration for device code
-# flow authentication against Microsoft Graph / Work IQ.
+# flow authentication against Microsoft Graph.
 #
 # Prerequisites: az CLI, logged in (az login)
 # Usage: .\setup-app-registration.ps1
 
 $ErrorActionPreference = "Stop"
 
-$DisplayName = "Work IQ A2A CLI"
+$DisplayName = "A2A CLI"
 $SignInAudience = "AzureADMyOrg"
 $GraphApi = "00000003-0000-0000-c000-000000000000"
 
@@ -56,4 +56,4 @@ Write-Host "── Done ──"
 Write-Host "App ID: $AppId"
 Write-Host ""
 Write-Host "Use with:  cargo run -- --appid $AppId"
-Write-Host "Or set:    `$env:WORKIQ_APP_ID = '$AppId'"
+Write-Host "Or set:    `$env:A2A_APP_ID = '$AppId'"
