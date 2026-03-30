@@ -9,5 +9,8 @@ DerivedData/
 # Rust
 rust-cli/target/
 
+# Secrets
+A2A Chat/A2A Chat/Configuration.plist
+
 # OS
 .DS_Store

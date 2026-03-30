@@ -10,7 +10,7 @@ use a2a_rs_core::{
 use auth::{decode_token, AuthManager, TokenCache};
 use clap::Parser;
 use colored::Colorize;
-use config::{Cli, Command, A2A_AUTHORITY, A2A_ENDPOINT, A2A_SCOPES};
+use config::{Cli, Command, A2A_ENDPOINT, A2A_SCOPES};
 use futures_util::StreamExt;
 
 use std::io::{self, Write};
@@ -21,10 +21,14 @@ async fn main() -> anyhow::Result<()> {
     let verbosity = cli.verbosity;
 
     let app_id = cli.appid.clone().unwrap_or_default();
+    let authority = cli.authority.clone().unwrap_or_default();
 
-    fn require_app_id(app_id: &str) -> anyhow::Result<()> {
+    fn require_auth_args(app_id: &str, authority: &str) -> anyhow::Result<()> {
         if app_id.is_empty() {
             anyhow::bail!("--appid is required (or set A2A_APP_ID)");
+        }
+        if authority.is_empty() {
+            anyhow::bail!("--authority is required (or set A2A_AUTHORITY)");
         }
         Ok(())
     }
@@ -32,9 +36,9 @@ async fn main() -> anyhow::Result<()> {
     // ── Handle subcommands ───────────────────────────────────────────
     match cli.command {
         Some(Command::Login) => {
-            require_app_id(&app_id)?;
+            require_auth_args(&app_id, &authority)?;
             let mut mgr =
-                AuthManager::new(&app_id, A2A_SCOPES, A2A_AUTHORITY, cli.account.as_deref());
+                AuthManager::new(&app_id, A2A_SCOPES, &authority, cli.account.as_deref());
             let token = mgr.get_token(verbosity).await?;
             println!("\n{}", "Logged in successfully.".green().bold());
             if let Some(acct) = mgr.cached_account() {
@@ -96,9 +100,9 @@ async fn main() -> anyhow::Result<()> {
     let (mut token, mut auth_mgr) = if let Some(ref raw_token) = cli.token {
         (raw_token.clone(), None)
     } else {
-        require_app_id(&app_id)?;
+        require_auth_args(&app_id, &authority)?;
         let mut mgr =
-            AuthManager::new(&app_id, A2A_SCOPES, A2A_AUTHORITY, cli.account.as_deref());
+            AuthManager::new(&app_id, A2A_SCOPES, &authority, cli.account.as_deref());
         let token = mgr.get_token(verbosity).await?;
         (token, Some(mgr))
     };

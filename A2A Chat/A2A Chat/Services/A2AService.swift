@@ -19,11 +19,23 @@ private let log = Logger(subsystem: "app.blueglass.A2A-Chat", category: "A2A")
 class A2AService {
     private let authService: AuthService
     private var contextId: String?
-
-    private static let endpoint = URL(string: "https://insert-your-endpoint-url/")!
+    private let endpoint: URL
 
     init(authService: AuthService) {
         self.authService = authService
+        self.endpoint = Self.loadEndpoint() ?? URL(string: "https://example.com")!
+    }
+
+    private static func loadEndpoint() -> URL? {
+        guard let path = Bundle.main.path(forResource: "Configuration", ofType: "plist"),
+              let dict = NSDictionary(contentsOfFile: path),
+              let urlString = dict["Endpoint"] as? String,
+              !urlString.isEmpty,
+              urlString != "YOUR_ENDPOINT_URL",
+              let url = URL(string: urlString) else {
+            return nil
+        }
+        return url
     }
 
     // MARK: - Public interface
@@ -127,7 +139,7 @@ class A2AService {
         let auth = BearerTokenAuth(token: token)
 
         let config = A2AClientConfiguration(
-            baseURL: Self.endpoint,
+            baseURL: endpoint,
             transportBinding: .jsonRPC,
             protocolVersion: "0.3",
             timeoutInterval: 300,

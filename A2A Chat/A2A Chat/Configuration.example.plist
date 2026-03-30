@@ -4,5 +4,7 @@
 <dict>
     <key>ClientId</key>
     <string>YOUR_APP_CLIENT_ID</string>
+    <key>Endpoint</key>
+    <string>YOUR_ENDPOINT_URL</string>
 </dict>
 </plist>
