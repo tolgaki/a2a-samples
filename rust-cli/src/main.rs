@@ -7,38 +7,78 @@ use a2a_rs_core::{
     new_message, Part, Role, SendMessageConfiguration, SendMessageResult,
     StreamingMessageResult,
 };
-use auth::{decode_token, AuthManager, TokenCache};
+use auth::{decode_token, AuthManager, SessionStore};
 use clap::Parser;
 use colored::Colorize;
-use config::{Cli, Command, A2A_ENDPOINT, A2A_SCOPES};
+use config::{Cli, Command};
 use futures_util::StreamExt;
 
 use std::io::{self, Write};
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+/// On macOS the SSO broker dispatches to the GCD main queue, so we must
+/// keep the main thread free for AppKit / CFRunLoop and run tokio on a
+/// background thread.  On other platforms we just use `#[tokio::main]`.
+fn main() {
+    #[cfg(target_os = "macos")]
+    {
+        // Spawn the tokio runtime on a background thread.
+        let handle = std::thread::spawn(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("tokio runtime")
+                .block_on(async_main())
+        });
+
+        // Run the CFRunLoop on the main thread so GCD main-queue blocks
+        // (used by ASAuthorizationController) can execute.
+        unsafe {
+            core_foundation::runloop::CFRunLoopRun();
+        }
+
+        // If the run loop stops (it shouldn't normally), wait for tokio.
+        if let Err(e) = handle.join().expect("tokio thread panicked") {
+            eprintln!("{} {e}", "Error:".red().bold());
+            std::process::exit(1);
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime")
+            .block_on(async_main())
+            .unwrap_or_else(|e| {
+                eprintln!("{} {e}", "Error:".red().bold());
+                std::process::exit(1);
+            });
+    }
+}
+
+async fn async_main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let verbosity = cli.verbosity;
 
     let app_id = cli.appid.clone().unwrap_or_default();
-    let authority = cli.authority.clone().unwrap_or_default();
+    let authority = cli.authority();
+    let scopes = cli.scopes.clone();
 
-    fn require_auth_args(app_id: &str, authority: &str) -> anyhow::Result<()> {
+    fn require_auth_args(app_id: &str) -> anyhow::Result<()> {
         if app_id.is_empty() {
             anyhow::bail!("--appid is required (or set A2A_APP_ID)");
-        }
-        if authority.is_empty() {
-            anyhow::bail!("--authority is required (or set A2A_AUTHORITY)");
         }
         Ok(())
     }
 
     // ── Handle subcommands ───────────────────────────────────────────
-    match cli.command {
+    let result = match cli.command {
         Some(Command::Login) => {
-            require_auth_args(&app_id, &authority)?;
+            require_auth_args(&app_id)?;
+            let scope_refs: Vec<&str> = scopes.iter().map(|s| s.as_str()).collect();
             let mut mgr =
-                AuthManager::new(&app_id, A2A_SCOPES, &authority, cli.account.as_deref());
+                AuthManager::new(&app_id, &scope_refs, &authority, cli.redirect_uri.as_deref(), cli.account.as_deref()).await?;
             let token = mgr.get_token(verbosity).await?;
             println!("\n{}", "Logged in successfully.".green().bold());
             if let Some(acct) = mgr.cached_account() {
@@ -48,15 +88,15 @@ async fn main() -> anyhow::Result<()> {
                 log_header("TOKEN");
                 decode_token(&token);
             }
-            return Ok(());
+            Ok(())
         }
         Some(Command::Logout) => {
-            TokenCache::clear()?;
+            SessionStore::clear()?;
             println!("{}", "Logged out. Token cache cleared.".green());
-            return Ok(());
+            Ok(())
         }
         Some(Command::Status) => {
-            match TokenCache::load() {
+            match SessionStore::load() {
                 Some(cache) => {
                     println!("{}", "Cached session found.".green());
                     println!("  Client ID: {}", cache.client_id.dimmed());
@@ -91,18 +131,48 @@ async fn main() -> anyhow::Result<()> {
                     );
                 }
             }
-            return Ok(());
+            Ok(())
         }
-        None => {}
+        None => run_repl(cli, &app_id, &scopes, authority, verbosity).await,
+    };
+
+    // Stop the CFRunLoop so the process can exit.
+    #[cfg(target_os = "macos")]
+    unsafe {
+        core_foundation::runloop::CFRunLoopStop(
+            core_foundation::runloop::CFRunLoopGetMain(),
+        );
     }
+
+    result
+}
+
+async fn run_repl(
+    cli: Cli,
+    app_id: &str,
+    scopes: &[String],
+    authority: String,
+    verbosity: u8,
+) -> anyhow::Result<()> {
+    let scope_refs: Vec<&str> = scopes.iter().map(|s| s.as_str()).collect();
+    // ── Require endpoint for REPL ────────────────────────────────────
+    let endpoint = cli.endpoint.as_deref().unwrap_or_else(|| {
+        eprintln!(
+            "{} --endpoint is required (or set A2A_ENDPOINT)",
+            "Error:".red().bold()
+        );
+        std::process::exit(1);
+    });
 
     // ── Resolve token for REPL ───────────────────────────────────────
     let (mut token, mut auth_mgr) = if let Some(ref raw_token) = cli.token {
         (raw_token.clone(), None)
     } else {
-        require_auth_args(&app_id, &authority)?;
+        if app_id.is_empty() {
+            anyhow::bail!("--appid is required (or set A2A_APP_ID)");
+        }
         let mut mgr =
-            AuthManager::new(&app_id, A2A_SCOPES, &authority, cli.account.as_deref());
+            AuthManager::new(app_id, &scope_refs, &authority, cli.redirect_uri.as_deref(), cli.account.as_deref()).await?;
         let token = mgr.get_token(verbosity).await?;
         (token, Some(mgr))
     };
@@ -117,12 +187,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // ── Set up A2A client ────────────────────────────────────────────
-    let mut client = A2ASessionClient::new(A2A_ENDPOINT, &token)?;
+    let mut client = A2ASessionClient::new(endpoint, &token)?;
     let mut context_id: Option<String> = None;
 
     if verbosity >= 1 {
         let mode = if cli.stream { "Streaming" } else { "Sync" };
-        log_header(&format!("READY — {mode} — {A2A_ENDPOINT}"));
+        log_header(&format!("READY — {mode} — {endpoint}"));
         if let Some(ref mgr) = auth_mgr {
             if let Some(acct) = mgr.cached_account() {
                 println!("  Signed in as {}", acct.cyan());

@@ -9,6 +9,7 @@ readme = "README.md"
 [dependencies]
 a2a-rs-core = "1.0.14"
 a2a-rs-client = "1.0.14"
+msal = { git = "https://github.com/tolgaki/msal-rust", features = ["broker-macos"] }
 clap = { version = "4", features = ["derive", "env"] }
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
@@ -20,3 +21,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 futures-util = "0.3"
 anyhow = "1"
 dirs = "5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"

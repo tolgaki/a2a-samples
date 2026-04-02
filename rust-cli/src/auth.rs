@@ -2,13 +2,19 @@ use anyhow::{Context, Result};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use colored::Colorize;
+use msal::broker::BrokerTokenRequest;
+use msal::request::{DeviceCodeRequest, RefreshTokenRequest};
+use msal::{AuthenticationResult, Configuration, PublicClientApplication};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-// ── Token Cache ─────────────────────────────────────────────────────────
+// ── Session Persistence ────────────────────────────────────────────────
 
+/// On-disk session state for cross-invocation token persistence.
+/// When brokered auth is active, the OS manages tokens; this stores
+/// the last-known access token and account info for status display.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TokenCache {
+pub struct SessionStore {
     pub client_id: String,
     pub access_token: String,
     pub refresh_token: Option<String>,
@@ -17,31 +23,30 @@ pub struct TokenCache {
     pub account: Option<String>,
 }
 
-fn cache_dir() -> PathBuf {
+fn store_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".a2a-cli")
 }
 
-fn cache_path() -> PathBuf {
-    cache_dir().join("token_cache.json")
+fn store_path() -> PathBuf {
+    store_dir().join("token_cache.json")
 }
 
-impl TokenCache {
+impl SessionStore {
     pub fn load() -> Option<Self> {
-        let data = std::fs::read_to_string(cache_path()).ok()?;
+        let data = std::fs::read_to_string(store_path()).ok()?;
         serde_json::from_str(&data).ok()
     }
 
     pub fn save(&self) -> Result<()> {
-        let dir = cache_dir();
+        let dir = store_dir();
         std::fs::create_dir_all(&dir)
             .with_context(|| format!("Failed to create {}", dir.display()))?;
-        let path = cache_path();
+        let path = store_path();
         let data = serde_json::to_string_pretty(self)?;
-        std::fs::write(&path, data)
+        std::fs::write(&path, &data)
             .with_context(|| format!("Failed to write {}", path.display()))?;
-        // Restrict permissions on unix
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -51,7 +56,7 @@ impl TokenCache {
     }
 
     pub fn clear() -> Result<()> {
-        let path = cache_path();
+        let path = store_path();
         if path.exists() {
             std::fs::remove_file(&path)
                 .with_context(|| format!("Failed to remove {}", path.display()))?;
@@ -60,116 +65,146 @@ impl TokenCache {
     }
 
     pub fn is_expired(&self) -> bool {
-        let now = chrono::Utc::now().timestamp();
-        now >= self.expires_at
+        chrono::Utc::now().timestamp() >= self.expires_at
     }
 
-    /// Returns true if the token will expire within the given number of seconds.
     pub fn expires_within(&self, secs: i64) -> bool {
-        let now = chrono::Utc::now().timestamp();
-        (self.expires_at - now) < secs
+        (self.expires_at - chrono::Utc::now().timestamp()) < secs
     }
 }
 
-// ── AuthManager ─────────────────────────────────────────────────────────
+// ── AuthManager ────────────────────────────────────────────────────────
 
-/// Manages the full token lifecycle: cache, silent refresh, device code fallback.
+/// Manages the full token lifecycle using MSAL: cache → broker → refresh → device code.
 pub struct AuthManager {
+    app: PublicClientApplication,
     client_id: String,
     scopes: Vec<String>,
-    authority: String,
-    account_hint: Option<String>,
-    http: reqwest::Client,
-    cache: Option<TokenCache>,
+    session: Option<SessionStore>,
 }
 
 impl AuthManager {
-    pub fn new(
+    pub async fn new(
         client_id: &str,
         scopes: &[&str],
         authority: &str,
-        account_hint: Option<&str>,
-    ) -> Self {
-        let cache = TokenCache::load().filter(|c| c.client_id == client_id);
-        Self {
+        redirect_uri: Option<&str>,
+        _account_hint: Option<&str>,
+    ) -> Result<Self> {
+        let config = Configuration::builder(client_id)
+            .authority(authority)
+            .build();
+        let app =
+            PublicClientApplication::new(config).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        #[cfg(target_os = "macos")]
+        {
+            let broker_result = if let Some(uri) = redirect_uri {
+                msal::broker::macos::MacOsBroker::new(uri, authority)
+            } else {
+                msal::broker::macos::MacOsBroker::new_for_cli(authority)
+            };
+            match broker_result {
+                Ok(broker) => {
+                    eprintln!("  {}", "macOS SSO broker detected".dimmed());
+                    app.set_broker(Box::new(broker)).await;
+                }
+                Err(e) => {
+                    eprintln!("  {} {}", "macOS SSO broker unavailable:".yellow(), e);
+                }
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        if let Ok(broker) = msal::broker::wam::WamBroker::new() {
+            app.set_broker(Box::new(broker)).await;
+        }
+
+        let session = SessionStore::load().filter(|s| s.client_id == client_id);
+
+        Ok(Self {
+            app,
             client_id: client_id.to_string(),
             scopes: scopes.iter().map(|s| s.to_string()).collect(),
-            authority: authority.to_string(),
-            account_hint: account_hint.map(|s| s.to_string()),
-            http: reqwest::Client::new(),
-            cache,
-        }
+            session,
+        })
     }
 
     /// Get a valid access token. Tries (in order):
     /// 1. Cached token if still valid
-    /// 2. Silent refresh via refresh_token
-    /// 3. Device code flow (interactive)
+    /// 2. Broker interactive (if broker available — OS decides whether to show UI)
+    /// 3. Silent refresh via refresh_token
+    /// 4. Device code flow (interactive)
     pub async fn get_token(&mut self, verbosity: u8) -> Result<String> {
         // 1. Cached and still fresh (>60s remaining)
-        if let Some(ref cache) = self.cache {
-            if !cache.expires_within(60) {
+        if let Some(ref session) = self.session {
+            if !session.expires_within(60) {
                 if verbosity >= 2 {
                     eprintln!("  {}", "Using cached access token".dimmed());
                 }
-                return Ok(cache.access_token.clone());
+                return Ok(session.access_token.clone());
             }
         }
 
-        // 2. Try silent refresh
-        if let Some(rt) = self.cache.as_ref().and_then(|c| c.refresh_token.clone()) {
+        // 2. Try broker
+        if self.app.is_broker_available().await {
+            if verbosity >= 1 {
+                eprintln!("  {}", "Acquiring token via broker...".dimmed());
+            }
+            match self.acquire_via_broker().await {
+                Ok(token) => return Ok(token),
+                Err(e) => {
+                    if verbosity >= 1 {
+                        eprintln!("  {} {}", "Broker failed:".yellow(), e);
+                    }
+                }
+            }
+        }
+
+        // 3. Try refresh token
+        if let Some(rt) = self.session.as_ref().and_then(|s| s.refresh_token.clone()) {
             if verbosity >= 1 {
                 eprintln!("  {}", "Refreshing token...".dimmed());
             }
-            match self.refresh_token(&rt).await {
-                Ok(new_cache) => {
-                    let token = new_cache.access_token.clone();
-                    self.cache = Some(new_cache);
-                    return Ok(token);
-                }
+            match self.refresh(&rt).await {
+                Ok(token) => return Ok(token),
                 Err(e) => {
                     if verbosity >= 1 {
-                        eprintln!(
-                            "  {} {}",
-                            "Refresh failed:".yellow(),
-                            e
-                        );
+                        eprintln!("  {} {}", "Refresh failed:".yellow(), e);
                     }
-                    // Fall through to device code
                 }
             }
         }
 
-        // 3. Device code flow
+        // 4. Device code flow
         if verbosity >= 1 {
             eprintln!("  {}", "Starting device code login...".dimmed());
         }
-        let new_cache = self.device_code_flow().await?;
-        let token = new_cache.access_token.clone();
-        self.cache = Some(new_cache);
-        Ok(token)
+        self.device_code_flow().await
     }
 
-    /// Ensure the token is fresh before a request. Returns the current access token,
-    /// refreshing silently if needed. Returns None only if refresh fails and there's
-    /// no way to get a token non-interactively.
+    /// Ensure the token is fresh before a request. Refreshes silently if needed.
     pub async fn ensure_fresh(&mut self, verbosity: u8) -> Result<String> {
-        if let Some(ref cache) = self.cache {
-            if !cache.expires_within(300) {
-                return Ok(cache.access_token.clone());
+        if let Some(ref session) = self.session {
+            if !session.expires_within(300) {
+                return Ok(session.access_token.clone());
             }
         }
-        // Token is stale or near expiry — try silent refresh
-        if let Some(rt) = self.cache.as_ref().and_then(|c| c.refresh_token.clone()) {
+
+        // Try broker silent
+        if self.app.is_broker_available().await {
+            if let Ok(token) = self.acquire_via_broker().await {
+                return Ok(token);
+            }
+        }
+
+        // Try refresh
+        if let Some(rt) = self.session.as_ref().and_then(|s| s.refresh_token.clone()) {
             if verbosity >= 2 {
                 eprintln!("  {}", "Silently refreshing token...".dimmed());
             }
-            match self.refresh_token(&rt).await {
-                Ok(new_cache) => {
-                    let token = new_cache.access_token.clone();
-                    self.cache = Some(new_cache);
-                    return Ok(token);
-                }
+            match self.refresh(&rt).await {
+                Ok(token) => return Ok(token),
                 Err(e) => {
                     if verbosity >= 1 {
                         eprintln!("  {} {}", "Silent refresh failed:".yellow(), e);
@@ -177,182 +212,117 @@ impl AuthManager {
                 }
             }
         }
+
         // Return whatever we have; caller will get a 401 if it's truly dead
-        if let Some(ref cache) = self.cache {
-            Ok(cache.access_token.clone())
+        if let Some(ref session) = self.session {
+            Ok(session.access_token.clone())
         } else {
             anyhow::bail!("No token available. Run `login` to authenticate.");
         }
     }
 
     pub fn cached_account(&self) -> Option<&str> {
-        self.cache.as_ref()?.account.as_deref()
+        self.session.as_ref()?.account.as_deref()
     }
 
-    // ── Silent Refresh ──────────────────────────────────────────────
+    // ── Broker ─────────────────────────────────────────────────────
 
-    async fn refresh_token(&mut self, refresh_token: &str) -> Result<TokenCache> {
-        let token_url = format!("{}/oauth2/v2.0/token", self.authority);
-        let scope = self.scopes.join(" ");
-
-        let resp = self
-            .http
-            .post(&token_url)
-            .form(&[
-                ("client_id", self.client_id.as_str()),
-                ("grant_type", "refresh_token"),
-                ("refresh_token", refresh_token),
-                ("scope", &scope),
-            ])
-            .send()
-            .await?;
-
-        let body = resp.bytes().await?;
-        let token_resp: FullTokenResponse = serde_json::from_slice(&body)
-            .with_context(|| {
-                let err: Option<TokenErrorResponse> = serde_json::from_slice(&body).ok();
-                format!(
-                    "Token refresh failed: {}",
-                    err.map(|e| format!("{}: {}", e.error, e.error_description.unwrap_or_default()))
-                        .unwrap_or_else(|| "unknown error".into())
-                )
-            })?;
-
-        let now = chrono::Utc::now().timestamp();
-        let cache = TokenCache {
-            client_id: self.client_id.clone(),
-            access_token: token_resp.access_token,
-            refresh_token: token_resp.refresh_token.or_else(|| {
-                // Keep the old refresh token if server didn't rotate
-                Some(refresh_token.to_string())
-            }),
-            expires_at: now + token_resp.expires_in as i64,
-            account: self
-                .account_hint
-                .clone()
-                .or_else(|| self.cache.as_ref().and_then(|c| c.account.clone())),
+    async fn acquire_via_broker(&mut self) -> Result<String> {
+        let req = BrokerTokenRequest {
+            scopes: self.scopes.clone(),
+            account: None,
+            claims: None,
+            correlation_id: None,
+            window_handle: None,
+            authentication_scheme: Default::default(),
+            pop_params: None,
         };
-        cache.save()?;
-        Ok(cache)
+        let result = self
+            .app
+            .acquire_token_interactive(req)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        self.persist(&result, None)?;
+        Ok(result.access_token)
     }
 
-    // ── Device Code Flow ────────────────────────────────────────────
+    // ── Refresh ────────────────────────────────────────────────────
 
-    async fn device_code_flow(&self) -> Result<TokenCache> {
-        let scope = self.scopes.join(" ");
-
-        // Add offline_access to get a refresh token
-        let scope_with_offline = if scope.contains("offline_access") {
-            scope.clone()
-        } else {
-            format!("{scope} offline_access")
+    async fn refresh(&mut self, refresh_token: &str) -> Result<String> {
+        let req = RefreshTokenRequest {
+            refresh_token: refresh_token.to_string(),
+            scopes: self.scopes_with_offline(),
+            claims: None,
+            correlation_id: None,
         };
+        let result = self
+            .app
+            .acquire_token_by_refresh_token(req)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        // Keep old refresh token if server didn't rotate
+        self.persist(&result, Some(refresh_token))?;
+        Ok(result.access_token)
+    }
 
-        let dc_url = format!("{}/oauth2/v2.0/devicecode", self.authority);
-        let resp = self
-            .http
-            .post(&dc_url)
-            .form(&[
-                ("client_id", self.client_id.as_str()),
-                ("scope", scope_with_offline.as_str()),
-            ])
-            .send()
-            .await?;
+    // ── Device Code ────────────────────────────────────────────────
 
-        let body = resp.bytes().await?;
-
-        // Check for error response first
-        if let Ok(err) = serde_json::from_slice::<TokenErrorResponse>(&body) {
-            if err.error_description.is_some() || err.error != "authorization_pending" {
-                anyhow::bail!(
-                    "Device code request failed: {} — {}",
-                    err.error,
-                    err.error_description.unwrap_or_default()
+    async fn device_code_flow(&mut self) -> Result<String> {
+        let req = DeviceCodeRequest {
+            scopes: self.scopes_with_offline(),
+            claims: None,
+            correlation_id: None,
+        };
+        let result = self
+            .app
+            .acquire_token_by_device_code(req, |info| {
+                println!("\n  {}", info.message.yellow().bold());
+                println!(
+                    "  Code: {}  URL: {}\n",
+                    info.user_code.green().bold(),
+                    info.verification_uri.underline()
                 );
-            }
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        self.persist(&result, None)?;
+        Ok(result.access_token)
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────
+
+    fn scopes_with_offline(&self) -> Vec<String> {
+        let mut scopes = self.scopes.clone();
+        if !scopes.iter().any(|s| s == "offline_access") {
+            scopes.push("offline_access".to_string());
         }
+        scopes
+    }
 
-        let dc_resp: DeviceCodeResponse = serde_json::from_slice(&body)
-            .with_context(|| {
-                format!(
-                    "Failed to parse device code response: {}",
-                    String::from_utf8_lossy(&body)
-                )
-            })?;
-
-        println!("\n  {}", dc_resp.message.yellow().bold());
-        println!(
-            "  Code: {}  URL: {}\n",
-            dc_resp.user_code.green().bold(),
-            dc_resp.verification_uri.underline()
-        );
-
-        // Poll for token
-        let token_url = format!("{}/oauth2/v2.0/token", self.authority);
-        let interval = std::time::Duration::from_secs(dc_resp.interval.max(5));
-        let deadline =
-            tokio::time::Instant::now() + std::time::Duration::from_secs(dc_resp.expires_in);
-
-        loop {
-            tokio::time::sleep(interval).await;
-
-            if tokio::time::Instant::now() > deadline {
-                anyhow::bail!("Device code flow timed out — please try again");
-            }
-
-            let resp = self
-                .http
-                .post(&token_url)
-                .form(&[
-                    ("client_id", self.client_id.as_str()),
-                    ("device_code", dc_resp.device_code.as_str()),
-                    (
-                        "grant_type",
-                        "urn:ietf:params:oauth:grant-type:device_code",
-                    ),
-                ])
-                .send()
-                .await?;
-
-            let body = resp.bytes().await?;
-
-            if let Ok(token_resp) = serde_json::from_slice::<FullTokenResponse>(&body) {
-                let now = chrono::Utc::now().timestamp();
-
-                // Try to extract account from the id_token or access_token
-                let account = extract_account(&token_resp.access_token)
-                    .or_else(|| self.account_hint.clone());
-
-                let cache = TokenCache {
-                    client_id: self.client_id.clone(),
-                    access_token: token_resp.access_token,
-                    refresh_token: token_resp.refresh_token,
-                    expires_at: now + token_resp.expires_in as i64,
-                    account,
-                };
-                cache.save()?;
-                return Ok(cache);
-            }
-
-            if let Ok(err_resp) = serde_json::from_slice::<TokenErrorResponse>(&body) {
-                match err_resp.error.as_str() {
-                    "authorization_pending" => continue,
-                    "slow_down" => {
-                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                        continue;
-                    }
-                    _ => {
-                        anyhow::bail!(
-                            "Login failed: {} — {}",
-                            err_resp.error,
-                            err_resp.error_description.unwrap_or_default()
-                        );
-                    }
-                }
-            }
-
-            anyhow::bail!("Unexpected response during login");
-        }
+    fn persist(
+        &mut self,
+        result: &AuthenticationResult,
+        fallback_rt: Option<&str>,
+    ) -> Result<()> {
+        let account = result
+            .account
+            .as_ref()
+            .map(|a| a.username.clone())
+            .or_else(|| self.session.as_ref().and_then(|s| s.account.clone()));
+        let refresh_token = result
+            .refresh_token
+            .clone()
+            .or_else(|| fallback_rt.map(|s| s.to_string()));
+        let session = SessionStore {
+            client_id: self.client_id.clone(),
+            access_token: result.access_token.clone(),
+            refresh_token,
+            expires_at: result.expires_on,
+            account,
+        };
+        session.save()?;
+        self.session = Some(session);
+        Ok(())
     }
 }
 
@@ -392,21 +362,6 @@ pub fn decode_token(token: &str) {
     }
 }
 
-/// Extract the UPN or preferred_username from a JWT access token.
-fn extract_account(token: &str) -> Option<String> {
-    let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 3 {
-        return None;
-    }
-    let payload = decode_jwt_part(parts[1]).ok()?;
-    payload
-        .get("upn")
-        .or_else(|| payload.get("preferred_username"))
-        .or_else(|| payload.get("unique_name"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-}
-
 fn decode_jwt_part(part: &str) -> Result<serde_json::Value> {
     let decoded = URL_SAFE_NO_PAD
         .decode(part.trim_end_matches('='))
@@ -431,31 +386,4 @@ fn print_json_pretty(val: &serde_json::Value, indent: &str) {
             println!("{}{}: {}", indent, k.cyan(), v_str);
         }
     }
-}
-
-// ── OAuth2 Response Types ───────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-struct DeviceCodeResponse {
-    device_code: String,
-    user_code: String,
-    verification_uri: String,
-    expires_in: u64,
-    interval: u64,
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct FullTokenResponse {
-    access_token: String,
-    #[allow(dead_code)]
-    token_type: Option<String>,
-    expires_in: u64,
-    refresh_token: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TokenErrorResponse {
-    error: String,
-    error_description: Option<String>,
 }
